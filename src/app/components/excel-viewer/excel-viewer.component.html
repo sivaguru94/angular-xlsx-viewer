@@ -1,0 +1,21 @@
+<div class="excel-viewer-wrapper">
+  <!-- Loading Overlay -->
+  <div *ngIf="loading" class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <span class="loading-text">Loading Excel file...</span>
+  </div>
+
+  <!-- Error Message -->
+  <div *ngIf="errorMessage && !loading" class="error-message">
+    <span class="error-icon">⚠️</span>
+    <span>{{ errorMessage }}</span>
+  </div>
+
+  <!-- Univer Container -->
+  <div
+    #univerContainer
+    [id]="containerId"
+    class="univer-container"
+    [class.hidden]="loading || errorMessage"
+  ></div>
+</div>

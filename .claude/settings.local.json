@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx @angular/cli@14 new xlsx-poc --skip-git --defaults)",
+      "WebSearch",
+      "WebFetch(domain:docs.univer.ai)",
+      "Bash(npm install:*)",
+      "Bash(pkill:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm search:*)",
+      "Bash(npm view:*)",
+      "Bash(find:*)",
+      "Bash(npm ls:*)",
+      "Bash(npx ng build:*)"
+    ]
+  }
+}

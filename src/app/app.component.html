@@ -1,0 +1,10 @@
+<div class="app-container">
+  <app-excel-viewer
+    [url]="excelUrl"
+    [config]="viewerConfig"
+    (loaded)="onExcelLoaded($event)"
+    (cellSelected)="onCellSelected($event)"
+    (error)="onError($event)"
+    (loadingChange)="onLoadingChange($event)"
+  ></app-excel-viewer>
+</div>

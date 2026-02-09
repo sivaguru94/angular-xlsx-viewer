@@ -1,0 +1,10 @@
+{
+  "/api/excel": {
+    "target": "https://demo-abhi-can-delete.s3.us-west-2.amazonaws.com",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/excel": ""
+    }
+  }
+}
