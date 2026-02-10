@@ -39,7 +39,7 @@ export const DEFAULT_CONFIG: ExcelViewerConfig = {
   showToolbar: true,
   showFormulaBar: true,
   showSheetTabs: true,
-  editable: true,
+  editable: false,
   locale: 'en-US',
   zoom: 100,
   insertDelay: 500,

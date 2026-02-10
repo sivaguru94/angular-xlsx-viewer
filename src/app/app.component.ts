@@ -22,7 +22,7 @@ export class AppComponent {
     showToolbar: true,
     showFormulaBar: true,
     showSheetTabs: true,
-    editable: true,
+    editable: false,
     locale: 'en-US',
   };
 

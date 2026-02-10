@@ -6,6 +6,7 @@ import {
   OnInit,
   OnDestroy,
   OnChanges,
+  AfterViewInit,
   SimpleChanges,
   ElementRef,
   ViewChild,
@@ -16,7 +17,11 @@ import UniverPresetSheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-
 // @ts-ignore - no types available
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
 // @ts-ignore - no types available
+import UniverPresetSheetsDrawingEnUS from '@univerjs/preset-sheets-drawing/locales/en-US';
+// @ts-ignore - no types available
 import { UniverSheetsDataValidationPreset } from '@univerjs/preset-sheets-data-validation';
+// @ts-ignore - no types available
+import UniverPresetSheetsDataValidationEnUS from '@univerjs/preset-sheets-data-validation/locales/en-US';
 import '@univerjs/sheets-drawing-ui/facade';
 import '@univerjs/sheets-data-validation/facade';
 import LuckyExcel from '@zwight/luckyexcel';
@@ -38,7 +43,7 @@ import {
   templateUrl: './excel-viewer.component.html',
   styleUrls: ['./excel-viewer.component.css'],
 })
-export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
+export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges, AfterViewInit {
   /**
    * URL to load the Excel file from.
    * Mutually exclusive with `file` input.
@@ -103,6 +108,8 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
   private univer: any;
   private mergedConfig: ExcelViewerConfig = DEFAULT_CONFIG;
   private instanceId: string;
+  private highlightTestInterval: any = null;
+  private editGuardDisposable: any = null;
 
   constructor() {
     this.instanceId = `univer-${Math.random().toString(36).substr(2, 9)}`;
@@ -110,6 +117,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
 
   ngOnInit(): void {
     this.mergedConfig = { ...DEFAULT_CONFIG, ...this.config };
+    console.log('mergedConfig', this.mergedConfig);
     if (!this.containerId) {
       this.containerId = this.instanceId;
     }
@@ -130,11 +138,29 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
 
     // Update config
     if (changes['config'] && !changes['config'].firstChange) {
+      const prevEditable = this.mergedConfig.editable;
       this.mergedConfig = { ...DEFAULT_CONFIG, ...this.config };
+
+      // Toggle read-only at runtime if editable changed
+      if (prevEditable !== this.mergedConfig.editable) {
+        if (this.mergedConfig.editable) {
+          this.removeEditGuard();
+        } else {
+          this.applyEditGuard();
+        }
+      }
     }
   }
 
+  ngAfterViewInit(): void {
+    // [TEST] Start random highlight cycle after a delay to let the sheet load
+    // setTimeout(() => this.startHighlightTest(), 3000);
+  }
+
   ngOnDestroy(): void {
+    if (this.highlightTestInterval) {
+      // clearInterval(this.highlightTestInterval);
+    }
     this.dispose();
   }
 
@@ -142,6 +168,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
    * Disposes the Univer instance and cleans up resources.
    */
   dispose(): void {
+    this.removeEditGuard();
     if (this.univer) {
       this.univer.dispose();
       this.univer = null;
@@ -175,9 +202,11 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
   }
 
   /**
-   * Sets the value of a cell.
+   * Sets the value of a cell. No-op if editable is false.
    */
   setCellValue(row: number, col: number, value: any, sheetIndex?: number): void {
+    if (!this.mergedConfig.editable) return;
+
     const workbook = this.univerAPI?.getActiveWorkbook?.();
     if (!workbook) return;
 
@@ -227,6 +256,41 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
   }
 
   /**
+   * Selects a range of cells (blue selection rectangle, same as user click/drag).
+   * @param startCell Start cell address (e.g., "A1") or { row, col } (0-based)
+   * @param endCell   End cell address (e.g., "C5") or { row, col } (0-based)
+   * @param sheetIndex Sheet index (0-based). Uses active sheet if omitted.
+   */
+  highlightRange(
+    startCell: string | { row: number; col: number },
+    endCell: string | { row: number; col: number },
+    sheetIndex?: number
+  ): void {
+    const workbook = this.univerAPI?.getActiveWorkbook?.();
+    if (!workbook) return;
+
+    const sheet =
+      sheetIndex !== undefined
+        ? workbook.getSheets()[sheetIndex]
+        : workbook.getActiveSheet();
+    if (!sheet) return;
+
+    // Activate the target sheet if it's not already active
+    if (sheetIndex !== undefined) {
+      sheet.activate();
+    }
+
+    const start = typeof startCell === 'string' ? this.parseAddress(startCell) : startCell;
+    const end = typeof endCell === 'string' ? this.parseAddress(endCell) : endCell;
+
+    const numRows = end.row - start.row + 1;
+    const numCols = end.col - start.col + 1;
+
+    const range = sheet.getRange(start.row, start.col, numRows, numCols);
+    range?.activate?.();
+  }
+
+  /**
    * Exports the current workbook as JSON (Univer format).
    */
   exportAsJson(): any {
@@ -237,6 +301,41 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
   // ─────────────────────────────────────────────────────────────────
   // Private Methods
   // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * [TEST] Randomly selects a cell range every 10 seconds.
+   * Remove this method and the ngAfterViewInit call when done testing.
+   */
+  private startHighlightTest(): void {
+    const randomHighlight = () => {
+      const workbook = this.univerAPI?.getActiveWorkbook?.();
+      if (!workbook) return;
+
+      const sheets = workbook.getSheets();
+      if (!sheets || sheets.length === 0) return;
+
+      const sheetIndex = Math.floor(Math.random() * sheets.length);
+
+      // Random start cell within rows 0-14, cols 0-7
+      const startRow = Math.floor(Math.random() * 15);
+      const startCol = Math.floor(Math.random() * 8);
+      // Random range size: 1-5 rows, 1-4 cols
+      const endRow = startRow + Math.floor(Math.random() * 5);
+      const endCol = startCol + Math.floor(Math.random() * 4);
+
+      const startAddr = this.columnToLetter(startCol) + (startRow + 1);
+      const endAddr = this.columnToLetter(endCol) + (endRow + 1);
+
+      console.log(`[TEST] Selecting ${startAddr}:${endAddr} on sheet ${sheetIndex}`);
+
+      this.highlightRange({ row: startRow, col: startCol }, { row: endRow, col: endCol }, sheetIndex);
+    };
+
+    // First selection immediately
+    randomHighlight();
+    // Then every 10 seconds
+    this.highlightTestInterval = setInterval(randomHighlight, 10000);
+  }
 
   private initUniver(): void {
     const presets: any[] = [
@@ -261,7 +360,12 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
     const { univer, univerAPI } = createUniver({
       locale: (localeMap[this.mergedConfig.locale || 'en-US'] || LocaleType.EN_US) as any,
       locales: {
-        [LocaleType.EN_US]: merge({}, UniverPresetSheetsCoreEnUS),
+        [LocaleType.EN_US]: merge(
+          {},
+          UniverPresetSheetsCoreEnUS,
+          UniverPresetSheetsDrawingEnUS,
+          UniverPresetSheetsDataValidationEnUS
+        ),
       },
       presets,
     });
@@ -347,7 +451,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
           // Setup event listeners
           this.setupEventListeners();
 
-          // Insert images and validations after delay
+          // Insert images and validations after delay, then apply edit guard
           const delay = this.mergedConfig.insertDelay || 500;
           setTimeout(() => {
             if (images.length > 0) {
@@ -355,6 +459,11 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
             }
             if (dataValidations.length > 0) {
               this.applyDataValidations(dataValidations);
+            }
+
+            // Apply read-only AFTER insertions are done
+            if (!this.mergedConfig.editable) {
+              this.applyEditGuard();
             }
           }, delay);
 
@@ -405,6 +514,127 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
           value,
         });
       });
+    }
+  }
+
+  // Commands that mutate workbook content, structure, or formatting
+  private static readonly BLOCKED_COMMANDS: Set<string> = new Set([
+    // Cell content
+    'sheet.command.set-range-values',
+    'sheet.command.clear-selection-content',
+    'sheet.command.clear-selection-format',
+    'sheet.command.clear-selection-all',
+    // Clipboard
+    'sheet.command.cut',
+    'sheet.command.paste',
+    'sheet.command.paste-value',
+    'sheet.command.paste-format',
+    'sheet.command.paste-col-width',
+    'sheet.command.paste-besides-border',
+    'sheet.command.optional-paste',
+    // Row operations
+    'sheet.command.insert-row',
+    'sheet.command.insert-row-before',
+    'sheet.command.insert-row-after',
+    'sheet.command.insert-row-by-range',
+    'sheet.command.insert-multi-rows-above',
+    'sheet.command.insert-multi-rows-after',
+    'sheet.command.remove-row',
+    'sheet.command.remove-row-by-range',
+    'sheet.command.append-row',
+    'sheet.command.move-rows',
+    'sheet.command.set-row-height',
+    'sheet.command.set-row-data',
+    'sheet.command.delta-row-height',
+    // Column operations
+    'sheet.command.insert-col',
+    'sheet.command.insert-col-before',
+    'sheet.command.insert-col-after',
+    'sheet.command.insert-col-by-range',
+    'sheet.command.insert-multi-cols-before',
+    'sheet.command.insert-multi-cols-right',
+    'sheet.command.remove-col',
+    'sheet.command.remove-col-by-range',
+    'sheet.command.move-cols',
+    'sheet.command.set-worksheet-col-width',
+    'sheet.command.delta-column-width',
+    // Range operations
+    'sheet.command.delete-range-move-left',
+    'sheet.command.delete-range-move-up',
+    'sheet.command.delete-range-move-left-confirm',
+    'sheet.command.delete-range-move-up-confirm',
+    'sheet.command.insert-range-move-down',
+    'sheet.command.insert-range-move-right',
+    'sheet.command.insert-range-move-down-confirm',
+    'sheet.command.insert-range-move-right-confirm',
+    'sheet.command.move-range',
+    'sheet.command.reorder-range',
+    // Styling
+    'sheet.command.set-style',
+    'sheet.command.set-bold',
+    'sheet.command.set-italic',
+    'sheet.command.set-underline',
+    'sheet.command.set-stroke',
+    'sheet.command.set-font-family',
+    'sheet.command.set-font-size',
+    'sheet.command.set-text-color',
+    'sheet.command.set-background-color',
+    'sheet.command.set-vertical-text-align',
+    'sheet.command.set-horizontal-text-align',
+    'sheet.command.set-text-wrap',
+    'sheet.command.set-text-rotation',
+    'sheet.command.set-border',
+    'sheet.command.set-border-position',
+    'sheet.command.set-border-style',
+    'sheet.command.set-border-color',
+    'sheet.command.set-border-basic',
+    // Sheet operations
+    'sheet.command.insert-sheet',
+    'sheet.command.remove-sheet',
+    'sheet.command.remove-sheet-confirm',
+    'sheet.command.set-worksheet-name',
+    'sheet.command.set-worksheet-order',
+    'sheet.command.set-worksheet-hidden',
+    'sheet.command.copy-sheet',
+    'sheet.command.set-tab-color',
+    'sheet.command.set-workbook-name',
+    // Merge
+    'sheet.command.add-worksheet-merge',
+    'sheet.command.add-worksheet-merge-all',
+    'sheet.command.add-worksheet-merge-horizontal',
+    'sheet.command.add-worksheet-merge-vertical',
+    'sheet.command.remove-worksheet-merge',
+    // Auto fill / format painter
+    'sheet.command.auto-fill',
+    'sheet.command.auto-clear-content',
+    'sheet.command.refill',
+    'sheet.command.apply-format-painter',
+    // Data validation (dropdowns, checkboxes, rules)
+    'sheet.command.addDataValidation',
+    'sheet.command.remove-data-validation-rule',
+    'sheet.command.remove-all-data-validation',
+    'sheet.command.updateDataValidationRuleRange',
+    'sheets.command.update-data-validation-setting',
+    'sheets.command.update-data-validation-options',
+    'sheets.command.clear-range-data-validation',
+    'data-validation.command.addRuleAndOpen',
+    'sheet.operation.show-data-validation-dropdown',
+  ]);
+
+  private applyEditGuard(): void {
+    if (this.editGuardDisposable || !this.univerAPI) return;
+
+    this.editGuardDisposable = this.univerAPI.onBeforeCommandExecute((command: any) => {
+      if (ExcelViewerComponent.BLOCKED_COMMANDS.has(command.id)) {
+        throw new Error('Read-only mode: editing is disabled');
+      }
+    });
+  }
+
+  private removeEditGuard(): void {
+    if (this.editGuardDisposable) {
+      this.editGuardDisposable.dispose();
+      this.editGuardDisposable = null;
     }
   }
 
@@ -666,5 +896,24 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
       temp = Math.floor(temp / 26) - 1;
     }
     return letter;
+  }
+
+  private letterToColumn(letters: string): number {
+    let col = 0;
+    for (let i = 0; i < letters.length; i++) {
+      col = col * 26 + (letters.charCodeAt(i) - 64);
+    }
+    return col - 1; // 0-based
+  }
+
+  private parseAddress(address: string): { row: number; col: number } {
+    const match = address.toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    if (!match) {
+      throw new Error(`Invalid cell address: ${address}`);
+    }
+    return {
+      col: this.letterToColumn(match[1]),
+      row: parseInt(match[2], 10) - 1, // 0-based
+    };
   }
 }
