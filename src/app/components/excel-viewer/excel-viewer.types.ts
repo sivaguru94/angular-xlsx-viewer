@@ -69,17 +69,23 @@ export interface CellSelectionEvent {
   /** Sheet name */
   sheetName: string;
 
-  /** Row index (0-based) */
-  row: number;
+  /** Start row index (0-based) */
+  startRow: number;
 
-  /** Column index (0-based) */
-  col: number;
+  /** Start column index (0-based) */
+  startCol: number;
 
-  /** Cell address (e.g., "A1") */
+  /** End row index (0-based) */
+  endRow: number;
+
+  /** End column index (0-based) */
+  endCol: number;
+
+  /** Range address (e.g., "A1:C5") */
   address: string;
 
-  /** Cell value */
-  value: any;
+  /** Concatenated cell values (left-to-right, top-to-bottom) */
+  value: string;
 }
 
 /**

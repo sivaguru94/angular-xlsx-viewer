@@ -89,7 +89,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges, After
   @Output() cellChanged = new EventEmitter<CellChangeEvent>();
 
   /**
-   * Emitted on any error.
+   * Emitted on any error.cellSelected
    */
   @Output() error = new EventEmitter<ExcelErrorEvent>();
 
@@ -488,33 +488,49 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges, After
   private setupEventListeners(): void {
     if (!this.univerAPI) return;
 
-    // Selection change listener
-    const hooks = this.univerAPI.getSheetHooks?.();
-    if (hooks?.onSelectionChange) {
-      hooks.onSelectionChange((selection: any) => {
-        if (!selection) return;
+    const workbook = this.univerAPI.getActiveWorkbook();
+    if (!workbook) return;
 
-        const workbook = this.univerAPI.getActiveWorkbook();
-        const sheet = workbook?.getActiveSheet();
-        if (!sheet) return;
+    // Selection change listener — callback receives IRange[]
+    workbook.onSelectionChange((selections: any[]) => {
+      if (!selections || selections.length === 0) return;
 
-        const range = selection.range;
-        if (!range) return;
+      const sheet = workbook.getActiveSheet();
+      if (!sheet) return;
 
-        const row = range.startRow;
-        const col = range.startColumn;
-        const address = this.columnToLetter(col) + (row + 1);
-        const value = this.getCellValue(row, col);
+      // Use the last (most recent) selection range
+      const range = selections[selections.length - 1];
 
-        this.cellSelected.emit({
-          sheetName: sheet.getSheetName(),
-          row,
-          col,
-          address,
-          value,
-        });
+      const startRow = range.startRow;
+      const startCol = range.startColumn;
+      const endRow = range.endRow ?? startRow;
+      const endCol = range.endColumn ?? startCol;
+
+      const startAddr = this.columnToLetter(startCol) + (startRow + 1);
+      const endAddr = this.columnToLetter(endCol) + (endRow + 1);
+      const address = startAddr === endAddr ? startAddr : `${startAddr}:${endAddr}`;
+
+      // Concatenate all cell values: left-to-right, top-to-bottom
+      const values: string[] = [];
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          const val = sheet.getRange(r, c)?.getValue?.();
+          if (val !== null && val !== undefined && val !== '') {
+            values.push(String(val));
+          }
+        }
+      }
+
+      this.cellSelected.emit({
+        sheetName: sheet.getSheetName(),
+        startRow,
+        startCol,
+        endRow,
+        endCol,
+        address,
+        value: values.join(' '),
       });
-    }
+    });
   }
 
   // Commands that mutate workbook content, structure, or formatting
@@ -676,7 +692,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges, After
               }
 
               images.push({
-                buffer: img.buffer as Buffer,
+                buffer: img.buffer as unknown as Buffer,
                 extension: img.extension || 'png',
                 sheetIndex: sheetId - 1,
                 sheetName: worksheet.name,
