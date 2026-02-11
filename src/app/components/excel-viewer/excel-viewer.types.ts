@@ -55,9 +55,6 @@ export interface ExcelLoadedEvent {
   /** Names of all sheets */
   sheetNames: string[];
 
-  /** Number of images extracted */
-  imageCount: number;
-
   /** Number of data validations extracted */
   validationCount: number;
 }
@@ -123,22 +120,6 @@ export interface ExcelErrorEvent {
 
   /** Original error object */
   error?: any;
-}
-
-/**
- * Internal interface for extracted images
- */
-export interface ExtractedImage {
-  buffer: Buffer | ArrayBuffer;
-  extension: string;
-  sheetIndex: number;
-  sheetName: string;
-  col: number;
-  row: number;
-  colOffset: number;
-  rowOffset: number;
-  width: number;
-  height: number;
 }
 
 /**

@@ -11,7 +11,8 @@
       "Bash(npm view:*)",
       "Bash(find:*)",
       "Bash(npm ls:*)",
-      "Bash(npx ng build:*)"
+      "Bash(npx ng build:*)",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -13,6 +13,7 @@ import {
 })
 export class AppComponent {
   // Excel file URL (proxied via Angular dev server)
+  // PaymentAdvice.xlsx
   excelUrl = '/api/excel/Titan+Engineering+Planning+-+Q4+2025.xlsx';
 
   // Configuration for the Excel viewer
@@ -30,7 +31,7 @@ export class AppComponent {
   onExcelLoaded(event: ExcelLoadedEvent): void {
     console.log('Excel loaded:', event);
     console.log(`Loaded ${event.sheetCount} sheets: ${event.sheetNames.join(', ')}`);
-    console.log(`Found ${event.imageCount} images and ${event.validationCount} validations`);
+    console.log(`Found ${event.validationCount} validations`);
   }
 
   onCellSelected(event: CellSelectionEvent): void {
