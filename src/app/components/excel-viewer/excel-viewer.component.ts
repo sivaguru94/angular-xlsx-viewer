@@ -34,7 +34,7 @@ import {
   ExcelErrorEvent,
   ExtractedDataValidation,
 } from './excel-viewer.types';
-import { READONLY_MENU_OVERRIDES } from './constants';
+import { READONLY_MENU_OVERRIDES, DEFAULT_HIGHLIGHT_COLOR } from './constants';
 import { columnToLetter, parseAddress, sanitizeWorkbookData } from './utils';
 import { DataValidationService } from './services/data-validation.service';
 import { EditGuardService } from './services/edit-guard.service';
@@ -75,6 +75,13 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
   @Input() containerId: string = '';
 
   /**
+   * Cells to highlight with a background color (0-based { row, col } coordinates).
+   * When this input changes the previous set is cleared and the new set is highlighted.
+   * Pass an empty array to clear all highlights.
+   */
+  @Input() highlightedCells: Array<{ row: number; col: number }> = [];
+
+  /**
    * Emitted when Excel file is successfully loaded.
    */
   @Output() loaded = new EventEmitter<ExcelLoadedEvent>();
@@ -110,6 +117,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
   private univer: any;
   private mergedConfig: ExcelViewerConfig = DEFAULT_CONFIG;
   private instanceId: string;
+  private previousHighlightedCells: Array<{ row: number; col: number }> = [];
 
   constructor(
     private dataValidationService: DataValidationService,
@@ -137,6 +145,13 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
       !changes['data']?.firstChange
     ) {
       this.loadData();
+    }
+
+    // Re-apply highlighted cells when the input array changes
+    if (changes['highlightedCells'] && !changes['highlightedCells'].firstChange) {
+      this.clearCellBackgrounds(this.previousHighlightedCells);
+      this.previousHighlightedCells = [...this.highlightedCells];
+      this.setCellBackgrounds(this.highlightedCells);
     }
 
     // Update config
@@ -184,18 +199,9 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
    * Gets the value of a cell.
    */
   getCellValue(row: number, col: number, sheetIndex?: number): any {
-    const workbook = this.univerAPI?.getActiveWorkbook?.();
-    if (!workbook) return null;
-
-    const sheet =
-      sheetIndex !== undefined
-        ? workbook.getSheets()[sheetIndex]
-        : workbook.getActiveSheet();
-
+    const sheet = this.resolveSheet(sheetIndex);
     if (!sheet) return null;
-
-    const range = sheet.getRange(row, col);
-    return range?.getValue?.();
+    return sheet.getRange(row, col)?.getValue?.();
   }
 
   /**
@@ -203,19 +209,9 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
    */
   setCellValue(row: number, col: number, value: any, sheetIndex?: number): void {
     if (!this.mergedConfig.editable) return;
-
-    const workbook = this.univerAPI?.getActiveWorkbook?.();
-    if (!workbook) return;
-
-    const sheet =
-      sheetIndex !== undefined
-        ? workbook.getSheets()[sheetIndex]
-        : workbook.getActiveSheet();
-
+    const sheet = this.resolveSheet(sheetIndex);
     if (!sheet) return;
-
-    const range = sheet.getRange(row, col);
-    range?.setValue?.(value);
+    sheet.getRange(row, col)?.setValue?.(value);
   }
 
   /**
@@ -263,13 +259,7 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
     endCell: string | { row: number; col: number },
     sheetIndex?: number
   ): void {
-    const workbook = this.univerAPI?.getActiveWorkbook?.();
-    if (!workbook) return;
-
-    const sheet =
-      sheetIndex !== undefined
-        ? workbook.getSheets()[sheetIndex]
-        : workbook.getActiveSheet();
+    const sheet = this.resolveSheet(sheetIndex);
     if (!sheet) return;
 
     // Activate the target sheet if it's not already active
@@ -295,14 +285,84 @@ export class ExcelViewerComponent implements OnInit, OnDestroy, OnChanges {
     return workbook?.save?.();
   }
 
+  /**
+   * Sets the background color on a list of cells.
+   * @param cells  Array of 0-based { row, col } coordinates.
+   * @param color  CSS hex color (default: DEFAULT_HIGHLIGHT_COLOR = '#FFFF00').
+   * @param sheetIndex Sheet index (0-based). Uses active sheet if omitted.
+   */
+  setCellBackgrounds(
+    cells: Array<{ row: number; col: number }>,
+    color: string = DEFAULT_HIGHLIGHT_COLOR,
+    sheetIndex?: number
+  ): void {
+    this.withGuardLifted(() => {
+      const sheet = this.resolveSheet(sheetIndex);
+      if (!sheet || !cells.length) return;
+      for (const { row, col } of cells) {
+        sheet.getRange(row, col)?.setBackgroundColor?.(color);
+      }
+    });
+  }
+
+  /**
+   * Clears the background color from a list of cells (restores to transparent).
+   * @param cells  Array of 0-based { row, col } coordinates.
+   * @param sheetIndex Sheet index (0-based). Uses active sheet if omitted.
+   */
+  clearCellBackgrounds(
+    cells: Array<{ row: number; col: number }>,
+    sheetIndex?: number
+  ): void {
+    this.withGuardLifted(() => {
+      const sheet = this.resolveSheet(sheetIndex);
+      if (!sheet || !cells.length) return;
+      for (const { row, col } of cells) {
+        sheet.getRange(row, col)?.setBackgroundColor?.(null);
+      }
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // Private Methods
   // ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Temporarily removes the edit guard, runs fn, then restores the guard if
+   * the viewer is in read-only mode. This lets programmatic style operations
+   * (background color) bypass the user-facing command block.
+   */
+  private withGuardLifted(fn: () => void): void {
+    if (!this.editGuardService.isActive) {
+      fn();
+      return;
+    }
+    // Suspend (not remove) so the interceptor stays registered.
+    // Resume is deferred via setTimeout(0) so Univer's internal async
+    // continuations (Promise microtasks) all finish before blocking resumes.
+    this.editGuardService.suspend();
+    fn();
+    setTimeout(() => this.editGuardService.resume(), 0);
+  }
+
+  private resolveSheet(sheetIndex?: number): any {
+    const workbook = this.univerAPI?.getActiveWorkbook?.();
+    if (!workbook) return null;
+    return sheetIndex !== undefined
+      ? workbook.getSheets()[sheetIndex]
+      : workbook.getActiveSheet();
+  }
+
   private initUniver(): void {
     const corePresetConfig: any = {
       container: this.containerRef.nativeElement,
+      toolbar: this.mergedConfig.showToolbar,
+      formulaBar: this.mergedConfig.showFormulaBar,
     };
+
+    if (this.mergedConfig.showSheetTabs === false) {
+      corePresetConfig.footer = { sheetBar: false };
+    }
 
     if (!this.mergedConfig.editable) {
       corePresetConfig.menu = READONLY_MENU_OVERRIDES;

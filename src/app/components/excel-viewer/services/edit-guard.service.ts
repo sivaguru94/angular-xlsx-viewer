@@ -5,6 +5,27 @@ import { BLOCKED_COMMANDS } from '../constants';
 @Injectable()
 export class EditGuardService {
   private editGuardDisposable: any = null;
+  private suspended = false;
+
+  /** True when the interceptor is currently registered. */
+  get isActive(): boolean {
+    return this.editGuardDisposable !== null;
+  }
+
+  /**
+   * Temporarily suspends blocking without removing the interceptor.
+   * Allows programmatic commands (e.g. background color) to pass through.
+   */
+  suspend(): void {
+    this.suspended = true;
+  }
+
+  /**
+   * Re-enables blocking after a suspension.
+   */
+  resume(): void {
+    this.suspended = false;
+  }
 
   /**
    * Registers a command interceptor that blocks all mutating commands.
@@ -13,7 +34,7 @@ export class EditGuardService {
     if (this.editGuardDisposable || !univerAPI) return;
 
     this.editGuardDisposable = univerAPI.onBeforeCommandExecute((command: any) => {
-      if (BLOCKED_COMMANDS.has(command.id)) {
+      if (!this.suspended && BLOCKED_COMMANDS.has(command.id)) {
         throw new Error('Read-only mode: editing is disabled');
       }
     });

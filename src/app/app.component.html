@@ -2,6 +2,7 @@
   <app-excel-viewer
     [url]="excelUrl"
     [config]="viewerConfig"
+    [highlightedCells]="highlightedCells"
     (loaded)="onExcelLoaded($event)"
     (cellSelected)="onCellSelected($event)"
     (error)="onError($event)"
